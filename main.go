@@ -66,6 +66,20 @@ func fetchTopStories(w http.ResponseWriter) ([]item, error) {
 	if err != nil {
 		return nil, errors.New("failed to load top stories")
 	}
+	var stories []item
+	at := 0
+
+	for len(stories) < numStories {
+		need := (numStories - len(stories)) * 5 / 4
+		stories = append(stories, fetchStories(ids[at:at+need])...)
+		at = at + need
+	}
+
+	return stories[:numStories], nil
+}
+
+func fetchStories(ids []int) []item {
+	var client hn.Client
 	type result struct {
 		idx  int
 		item item
@@ -73,7 +87,7 @@ func fetchTopStories(w http.ResponseWriter) ([]item, error) {
 	}
 	resultCh := make(chan result)
 
-	for idx := 0; idx < numStories; idx++ {
+	for idx := 0; idx < len(ids); idx++ {
 		go func(idx, id int) {
 			hnItem, err := client.GetItem(id)
 			if err != nil {
@@ -84,7 +98,7 @@ func fetchTopStories(w http.ResponseWriter) ([]item, error) {
 	}
 
 	var results []result
-	for i := 0; i < numStories; i++ {
+	for i := 0; i < len(ids); i++ {
 		results = append(results, <-resultCh)
 	}
 	sort.Slice(results, func(i, j int) bool {
@@ -100,8 +114,7 @@ func fetchTopStories(w http.ResponseWriter) ([]item, error) {
 			stories = append(stories, res.item)
 		}
 	}
-
-	return stories, nil
+	return stories
 }
 
 func parseHNItem(hnItem hn.Item) item {
