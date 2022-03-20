@@ -39,7 +39,7 @@ func main() {
 func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		stories, err := fetchTopStories(w)
+		stories, err := getCachedStories(w)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -78,8 +78,28 @@ func fetchTopStories(w http.ResponseWriter) ([]item, error) {
 	return stories[:numStories], nil
 }
 
+var (
+	cache           []item
+	cacheExpiration time.Time
+)
+
+func getCachedStories(w http.ResponseWriter) ([]item, error) {
+	// if cache is not expired => use cache
+	if time.Since(cacheExpiration) < 0 {
+		return cache, nil
+	}
+
+	stories, err := fetchTopStories(w)
+	if err != nil {
+		return nil, err
+	}
+
+	cache = stories
+	cacheExpiration = time.Now().Add(1 * time.Second)
+	return stories, nil
+}
+
 func fetchStories(ids []int) []item {
-	var client hn.Client
 	type result struct {
 		idx  int
 		item item
@@ -89,6 +109,7 @@ func fetchStories(ids []int) []item {
 
 	for idx := 0; idx < len(ids); idx++ {
 		go func(idx, id int) {
+			var client hn.Client
 			hnItem, err := client.GetItem(id)
 			if err != nil {
 				resultCh <- result{idx: idx, err: err}
